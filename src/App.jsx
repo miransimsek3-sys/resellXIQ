@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 
-const ANTHROPIC_KEY =
-  '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';
+
 const SUPABASE_URL = 'https://bwjehefepaqfkplwboud.supabase.co';
 const SUPABASE_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3amVoZWZlcGFxZmtwbHdib3VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3NzUzODUsImV4cCI6MjA5NTM1MTM4NX0.LvCu_gLq-hez326Z3OMw4q6w95DnHtmAWv3l7hoAwgk';
@@ -19,29 +18,14 @@ async function sbAuth(action, email, password) {
 }
 
 async function callClaude(messages, system = '', useSearch = false) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('/api/claude', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-      'x-api-key': ANTHROPIC_KEY,
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 1500,
-      messages,
-      ...(system ? { system } : {}),
-      ...(useSearch
-        ? { tools: [{ type: 'web_search_20250305', name: 'web_search' }] }
-        : {}),
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, system, useSearch }),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  return (
-    data.content?.map((i) => (i.type === 'text' ? i.text : '')).join('') || ''
-  );
+  return data.content?.map((i) => (i.type === 'text' ? i.text : '')).join('') || '';
 }
 
 const T = {
