@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   try {
     const { messages, system, useSearch } = req.body;
     const body = {
-      model: "claude-sonnet-4-5",
+      model: "claude-3-5-sonnet-20241022",
       max_tokens: 1500,
       messages,
       ...(system ? { system } : {}),
