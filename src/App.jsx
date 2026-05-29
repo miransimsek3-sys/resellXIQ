@@ -57,16 +57,50 @@ const ALL_VENDORS = [
   { name: '⭐ Insider Wholesale Deals', url: '#', desc: 'Wöchentliche Deals exklusiv für Elite-Mitglieder', tier: 'elite' },
 ];
 
-const TREND_ITEMS = [
-  { name: 'Cardholder', brand: 'Goyard', hype_score: 98, avg_price_eur: 180, sell_speed: 'extrem schnell', trend_reason: 'Ikonisches Luxus-Accessoire viral bei Gen Z.', tip: 'Echtheitsnachweis im Bild zeigen.', img: 'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=400&q=80' },
-  { name: 'Samba OG', brand: 'Adidas', hype_score: 96, avg_price_eur: 80, sell_speed: 'extrem schnell', trend_reason: 'Meistverkaufter Sneaker in Europa 2025.', tip: 'Originalbox mitverkaufen – +15-20€.', img: 'https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=400&q=80' },
-  { name: 'Jordan 1 Retro', brand: 'Jordan', hype_score: 93, avg_price_eur: 140, sell_speed: 'extrem schnell', trend_reason: 'Meistgesuchter Basketball-Sneaker auf Vinted.', tip: 'Colorway-Name ausschreiben.', img: 'https://images.unsplash.com/photo-1552346154-21d32810aba3?w=400&q=80' },
-  { name: 'Cargo Pants', brand: 'Carhartt', hype_score: 92, avg_price_eur: 55, sell_speed: 'extrem schnell', trend_reason: 'Workwear dominiert Streetwear 2025.', tip: 'M und L verkaufen sich am schnellsten.', img: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=400&q=80' },
-  { name: 'Puffer Jacket', brand: 'The North Face', hype_score: 91, avg_price_eur: 110, sell_speed: 'extrem schnell', trend_reason: 'TNF Nuptse meistverkauftes Winterstück.', tip: 'Farbfoto bei Tageslicht.', img: 'https://images.unsplash.com/photo-1544923246-77307dd654cb?w=400&q=80' },
-  { name: "Levi's 501", brand: "Levi's", hype_score: 91, avg_price_eur: 45, sell_speed: 'extrem schnell', trend_reason: "Vintage Levi's 501 meistverkauftes Stück.", tip: 'Innenwaschzettel fotografieren.', img: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&q=80' },
-  { name: 'Air Force 1', brand: 'Nike', hype_score: 90, avg_price_eur: 65, sell_speed: 'sehr schnell', trend_reason: 'Zeitloser Klassiker.', tip: 'Weiß/Weiß meistgesucht.', img: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80' },
-  { name: 'Shorts', brand: 'Corteiz', hype_score: 90, avg_price_eur: 60, sell_speed: 'sehr schnell', trend_reason: 'Heißestes Underground-Label in Europa.', tip: 'Marke groß in den Titel.', img: 'https://images.unsplash.com/photo-1591195853828-11db59a44f43?w=400&q=80' },
-];
+// Google Custom Search config – trage hier deinen Key und cx ein
+const GOOGLE_API_KEY = 'DEIN_GOOGLE_API_KEY';
+const GOOGLE_CX = 'DEINE_SEARCH_ENGINE_ID';
+
+async function fetchGoogleImage(query) {
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&searchType=image&num=1&imgSize=medium&safe=active`
+    );
+    const data = await res.json();
+    return data.items?.[0]?.link || null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchLiveTrends() {
+  const prompt = `Du bist ein Reselling-Experte für Vinted und Second-Hand-Märkte in Europa. 
+Heute ist ${new Date().toLocaleDateString('de-DE', {month:'long', year:'numeric'})}.
+
+Erstelle eine aktuelle Top-10 Liste der meistgefragten und profitabelsten Artikel auf Vinted Deutschland.
+Berücksichtige aktuelle Trends, Jahreszeit und aktuelle Hype-Level.
+
+Antworte NUR als JSON-Array (kein Text davor/danach):
+[
+  {
+    "name": "Produktname",
+    "brand": "Marke",
+    "hype_score": 95,
+    "avg_price_eur": 80,
+    "sell_speed": "extrem schnell",
+    "trend_reason": "Kurze Begründung warum gerade hot",
+    "tip": "Konkreter Verkaufstipp",
+    "trend": "steigend"
+  }
+]
+
+Wichtig: Aktuelle Trends beachten, realistische Preise für Vinted DE, nur Artikel die wirklich gefragt sind.`;
+
+  const text = await callClaude([{ role: 'user', content: prompt }], 'Antworte NUR als valides JSON-Array ohne Markdown.');
+  const m = text.match(/\[[\s\S]*\]/);
+  if (!m) throw new Error('Kein JSON gefunden');
+  return JSON.parse(m[0]);
+}
 
 const AGB_TEXT = `ResellXIQ Nutzungsbedingungen
 
@@ -509,10 +543,121 @@ function VendorDirectory({ plan, onUpgrade }) {
 }
 
 function Trends({ lang, onSelect }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [imgLoadingSet, setImgLoadingSet] = useState(new Set());
+
+  const load = async () => {
+    setLoading(true); setError('');
+    try {
+      const trends = await fetchLiveTrends();
+      // Bilder parallel laden
+      const withImgs = await Promise.all(
+        trends.map(async (item) => {
+          const img = await fetchGoogleImage(`${item.brand} ${item.name} fashion product`);
+          return { ...item, img };
+        })
+      );
+      setItems(withImgs);
+      setLastUpdated(new Date());
+    } catch (e) {
+      setError('Trends konnten nicht geladen werden: ' + e.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const trendColor = t => t === 'steigend' ? '#4caf50' : t === 'fallend' ? '#ff6b6b' : '#888';
+  const trendIcon  = t => t === 'steigend' ? '↑' : t === 'fallend' ? '↓' : '→';
+
+  if (loading) return (
+    <div className="fade-in">
+      <div style={{marginBottom:24}}>
+        <h2 style={{fontSize:28,fontWeight:800,color:'#fff',fontFamily:'Syne, sans-serif',letterSpacing:'-0.02em',marginBottom:6}}>🔥 Trends</h2>
+        <p style={{fontSize:13,color:'#666'}}>KI analysiert aktuelle Vinted-Trends...</p>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {[...Array(6)].map((_,i) => (
+          <div key={i} style={{background:'#0a0a0a',border:'1px solid #111',borderRadius:12,height:86,overflow:'hidden',display:'flex',opacity:1-i*0.12}}>
+            <div style={{width:86,background:'#111',flexShrink:0,position:'relative',overflow:'hidden'}}>
+              <div style={{position:'absolute',inset:0,background:'linear-gradient(90deg,transparent,rgba(76,175,80,0.07),transparent)',animation:'shimmer 1.4s infinite'}}/>
+            </div>
+            <div style={{flex:1,padding:'14px',display:'flex',flexDirection:'column',gap:8,justifyContent:'center'}}>
+              <div style={{height:8,background:'#111',borderRadius:4,width:'40%',position:'relative',overflow:'hidden'}}>
+                <div style={{position:'absolute',inset:0,background:'linear-gradient(90deg,transparent,rgba(76,175,80,0.07),transparent)',animation:'shimmer 1.4s infinite'}}/>
+              </div>
+              <div style={{height:12,background:'#111',borderRadius:4,width:'60%',position:'relative',overflow:'hidden'}}>
+                <div style={{position:'absolute',inset:0,background:'linear-gradient(90deg,transparent,rgba(76,175,80,0.07),transparent)',animation:'shimmer 1.4s infinite'}}/>
+              </div>
+              <div style={{height:8,background:'#111',borderRadius:4,width:'80%',position:'relative',overflow:'hidden'}}>
+                <div style={{position:'absolute',inset:0,background:'linear-gradient(90deg,transparent,rgba(76,175,80,0.07),transparent)',animation:'shimmer 1.4s infinite'}}/>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <style>{`@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}`}</style>
+    </div>
+  );
+
   return (
     <div className="fade-in">
-      <div style={{marginBottom:24}}><h2 style={{fontSize:28,fontWeight:800,color:'#fff',fontFamily:'Syne, sans-serif',letterSpacing:'-0.02em',marginBottom:6}}>🔥 Trends</h2><p style={{fontSize:13,color:'#666'}}>Top Artikel auf Vinted aktuell</p></div>
-      {TREND_ITEMS.map((item,i)=><div key={i} onClick={()=>onSelect(item)} className="card-hover" style={{background:'#0a0a0a',border:'1px solid #111',borderRadius:12,marginBottom:8,overflow:'hidden',cursor:'pointer',display:'flex'}}><img src={item.img} alt={item.name} style={{width:86,height:86,objectFit:'cover',flexShrink:0}} onError={e=>{e.target.style.display='none';}}/><div style={{flex:1,padding:'14px',minWidth:0}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><div><p style={{fontSize:10,color:'#444',letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:2}}>{item.brand}</p><h3 style={{fontSize:15,fontWeight:700,color:'#fff',fontFamily:'Syne, sans-serif'}}>{item.name}</h3></div><span style={{fontSize:10,color:'#222',fontWeight:700}}>#{i+1}</span></div><div style={{display:'flex',gap:8,alignItems:'center'}}><span style={{fontSize:11,color:'#4caf50',fontWeight:700}}>{item.hype_score}/100</span><span style={{fontSize:10,color:'#222'}}>·</span><span style={{fontSize:11,color:'#888'}}>~{item.avg_price_eur}€</span><span style={{fontSize:10,color:'#222'}}>·</span><span style={{fontSize:11,color:'#666'}}>{item.sell_speed}</span></div></div></div>)}
+      <div style={{marginBottom:20,display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
+        <div>
+          <h2 style={{fontSize:28,fontWeight:800,color:'#fff',fontFamily:'Syne, sans-serif',letterSpacing:'-0.02em',marginBottom:6}}>🔥 Trends</h2>
+          <p style={{fontSize:13,color:'#666'}}>Live KI-Analyse · Top Artikel auf Vinted aktuell</p>
+          {lastUpdated && <p style={{fontSize:10,color:'#333',marginTop:4}}>Aktualisiert: {lastUpdated.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</p>}
+        </div>
+        <button onClick={load} style={{background:'transparent',border:'1px solid #1a3a1a',borderRadius:8,padding:'8px 14px',color:'#4caf50',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'Syne, sans-serif',whiteSpace:'nowrap',flexShrink:0}}>↻ Neu laden</button>
+      </div>
+      {error && <div style={{background:'#0a0000',border:'1px solid #2a0000',borderRadius:10,padding:'12px 16px',fontSize:13,color:'#ff6b6b',marginBottom:16}}>{error}</div>}
+      {items.map((item, i) => (
+        <div key={i} onClick={() => onSelect(item)} className="card-hover"
+          style={{background:'#0a0a0a',border:'1px solid #111',borderRadius:12,marginBottom:8,overflow:'hidden',cursor:'pointer',display:'flex'}}>
+          <div style={{width:86,height:86,flexShrink:0,background:'#111',position:'relative',overflow:'hidden'}}>
+            {item.img ? (
+              <img src={item.img} alt={item.name}
+                style={{width:'100%',height:'100%',objectFit:'cover',display:imgLoadingSet.has(i)?'none':'block'}}
+                onLoad={() => setImgLoadingSet(s => { const n=new Set(s); n.delete(i); return n; })}
+                onError={e => { e.target.style.display='none'; }}
+              />
+            ) : (
+              <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#0d0d0d'}}>
+                <span style={{fontSize:28}}>👟</span>
+              </div>
+            )}
+            <div style={{position:'absolute',top:4,left:4,background:'rgba(0,0,0,0.75)',borderRadius:4,padding:'2px 6px'}}>
+              <span style={{fontSize:9,color:'#4caf50',fontWeight:800,fontFamily:'Syne, sans-serif'}}>#{i+1}</span>
+            </div>
+          </div>
+          <div style={{flex:1,padding:'12px 14px',minWidth:0}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:5,gap:8}}>
+              <div style={{minWidth:0}}>
+                <p style={{fontSize:10,color:'#444',letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:2}}>{item.brand}</p>
+                <h3 style={{fontSize:15,fontWeight:700,color:'#fff',fontFamily:'Syne, sans-serif',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.name}</h3>
+              </div>
+              <span style={{fontSize:11,color:trendColor(item.trend),fontWeight:700,flexShrink:0}}>{trendIcon(item.trend)}</span>
+            </div>
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+              <span style={{fontSize:11,color:'#4caf50',fontWeight:700}}>{item.hype_score}/100</span>
+              <span style={{fontSize:10,color:'#222'}}>·</span>
+              <span style={{fontSize:11,color:'#aaa'}}>~{item.avg_price_eur}€</span>
+              <span style={{fontSize:10,color:'#222'}}>·</span>
+              <span style={{fontSize:10,color:'#666'}}>{item.sell_speed}</span>
+            </div>
+            <p style={{fontSize:11,color:'#444',marginTop:5,lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.trend_reason}</p>
+          </div>
+        </div>
+      ))}
+      {!loading && items.length === 0 && !error && (
+        <div style={{background:'#0a0a0a',border:'1px solid #111',borderRadius:14,padding:'50px 20px',textAlign:'center'}}>
+          <p style={{fontSize:13,color:'#444'}}>Keine Trends geladen</p>
+          <button onClick={load} style={{marginTop:12,background:'#4caf50',color:'#000',border:'none',borderRadius:8,padding:'10px 20px',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'Syne, sans-serif'}}>Jetzt laden</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -523,7 +668,18 @@ function ItemModal({ item, onClose, onAdd }) {
   const iStyle={width:'100%',background:'#080808',border:'1px solid #1a1a1a',borderRadius:8,padding:'11px 14px',fontSize:13,color:'#fff',outline:'none'};
   return (
     <Modal onClose={onClose}>
-      <div style={{position:'relative',height:180}}><img src={item.img} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover',filter:'brightness(0.5)'}} onError={e=>{e.target.style.display='none';}}/><div style={{position:'absolute',inset:0,background:'linear-gradient(to top,#0d0d0d,transparent)'}}/><button onClick={onClose} style={{position:'absolute',top:12,right:12,background:'rgba(0,0,0,0.6)',border:'1px solid #2a2a2a',color:'#fff',width:32,height:32,borderRadius:8,cursor:'pointer',fontSize:18}}>×</button><div style={{position:'absolute',bottom:16,left:20}}><p style={{fontSize:11,color:'#777',textTransform:'uppercase',marginBottom:4}}>{item.brand}</p><h2 style={{fontSize:22,fontWeight:800,color:'#fff',fontFamily:'Syne, sans-serif'}}>{item.name}</h2></div></div>
+      <div style={{position:'relative',height:180,background:'#0a0a0a',overflow:'hidden'}}>
+        {item.img
+          ? <img src={item.img} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover',filter:'brightness(0.5)'}} onError={e=>{e.target.style.display='none';}}/>
+          : <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:60,opacity:0.15}}>👕</div>
+        }
+        <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,#0d0d0d,transparent)'}}/>
+        <button onClick={onClose} style={{position:'absolute',top:12,right:12,background:'rgba(0,0,0,0.6)',border:'1px solid #2a2a2a',color:'#fff',width:32,height:32,borderRadius:8,cursor:'pointer',fontSize:18}}>×</button>
+        <div style={{position:'absolute',bottom:16,left:20}}>
+          <p style={{fontSize:11,color:'#777',textTransform:'uppercase',marginBottom:4}}>{item.brand}</p>
+          <h2 style={{fontSize:22,fontWeight:800,color:'#fff',fontFamily:'Syne, sans-serif'}}>{item.name}</h2>
+        </div>
+      </div>
       <div style={{padding:20}}>
         <div style={{background:'rgba(76,175,80,0.04)',border:'1px solid #1a3a1a',borderRadius:10,padding:'14px',marginBottom:16}}><p style={{fontSize:10,color:'#4caf50',textTransform:'uppercase',marginBottom:6}}>💡 Pro Tip</p><p style={{fontSize:13,color:'#88aa88',lineHeight:1.6}}>{item.tip}</p></div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
