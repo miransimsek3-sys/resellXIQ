@@ -25,7 +25,15 @@ async function callClaude(messages, system = '') {
   const res = await fetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages, system }) });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-  return data.content?.map(i => i.type === 'text' ? i.text : '').join('') || '';
+  const extractText = (content) => {
+    if (!Array.isArray(content)) return '';
+    return content.map(block => {
+      if (block.type === 'text') return block.text;
+      if (block.type === 'tool_result' && Array.isArray(block.content)) return extractText(block.content);
+      return '';
+    }).join('');
+  };
+  return extractText(data.content) || '';
 }
 async function callClaudeWithImage(imageData, prompt) {
   const res = await fetch('/api/claude', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageData } }, { type: 'text', text: prompt }] }] }) });
@@ -57,48 +65,34 @@ const ALL_VENDORS = [
   { name: '⭐ Insider Wholesale Deals', url: '#', desc: 'Wöchentliche Deals exklusiv für Elite-Mitglieder', tier: 'elite' },
 ];
 
-// Google Custom Search config – trage hier deinen Key und cx ein
-const GOOGLE_API_KEY = 'DEIN_GOOGLE_API_KEY';
-const GOOGLE_CX = 'DEINE_SEARCH_ENGINE_ID';
-
+// Bildsuche läuft sicher über euer Backend – kein API Key im Frontend!
 async function fetchGoogleImage(query) {
   try {
-    const res = await fetch(
-      `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&searchType=image&num=1&imgSize=medium&safe=active`
-    );
+    const res = await fetch(`/api/image?query=${encodeURIComponent(query)}`);
     const data = await res.json();
-    return data.items?.[0]?.link || null;
+    return data.images?.[0]?.url || null;
   } catch {
     return null;
   }
 }
 
 async function fetchLiveTrends() {
-  const prompt = `Du bist ein Reselling-Experte für Vinted und Second-Hand-Märkte in Europa. 
-Heute ist ${new Date().toLocaleDateString('de-DE', {month:'long', year:'numeric'})}.
+  const monat = new Date().toLocaleDateString('de-DE', {month:'long', year:'numeric'});
+  const prompt = `Du bist ein Reselling-Experte fuer Vinted. Heute ist ${monat}. Erstelle eine Top-10 Liste der meistgefragten Artikel auf Vinted Deutschland passend zur aktuellen Jahreszeit. Antworte AUSSCHLIESSLICH mit einem JSON-Array ohne Markdown oder Erklaerungen: [{"name":"...","brand":"...","hype_score":90,"avg_price_eur":60,"sell_speed":"sehr schnell","trend_reason":"...","tip":"...","trend":"steigend"}]`;
 
-Erstelle eine aktuelle Top-10 Liste der meistgefragten und profitabelsten Artikel auf Vinted Deutschland.
-Berücksichtige aktuelle Trends, Jahreszeit und aktuelle Hype-Level.
-
-Antworte NUR als JSON-Array (kein Text davor/danach):
-[
-  {
-    "name": "Produktname",
-    "brand": "Marke",
-    "hype_score": 95,
-    "avg_price_eur": 80,
-    "sell_speed": "extrem schnell",
-    "trend_reason": "Kurze Begründung warum gerade hot",
-    "tip": "Konkreter Verkaufstipp",
-    "trend": "steigend"
-  }
-]
-
-Wichtig: Aktuelle Trends beachten, realistische Preise für Vinted DE, nur Artikel die wirklich gefragt sind.`;
-
-  const text = await callClaude([{ role: 'user', content: prompt }], 'Antworte NUR als valides JSON-Array ohne Markdown.');
-  const m = text.match(/\[[\s\S]*\]/);
-  if (!m) throw new Error('Kein JSON gefunden');
+  const res = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: prompt }],
+      system: 'Antworte NUR mit einem validen JSON-Array. Kein anderer Text, keine Backticks, kein Markdown.'
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  const rawText = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  const m = rawText.match(/\[[\s\S]*\]/);
+  if (!m) throw new Error('Kein JSON. Antwort: ' + rawText.slice(0, 300));
   return JSON.parse(m[0]);
 }
 
