@@ -608,44 +608,61 @@ function Trends({ lang, onSelect }) {
         <button onClick={load} style={{background:'transparent',border:'1px solid #1a3a1a',borderRadius:8,padding:'8px 14px',color:'#4caf50',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'Syne, sans-serif',whiteSpace:'nowrap',flexShrink:0}}>↻ Neu laden</button>
       </div>
       {error && <div style={{background:'#0a0000',border:'1px solid #2a0000',borderRadius:10,padding:'12px 16px',fontSize:13,color:'#ff6b6b',marginBottom:16}}>{error}</div>}
-      {items.map((item, i) => (
-        <div key={i} onClick={() => onSelect(item)} className="card-hover"
-          style={{background:'#0a0a0a',border:'1px solid #111',borderRadius:12,marginBottom:8,overflow:'hidden',cursor:'pointer',display:'flex'}}>
-          <div style={{width:86,height:86,flexShrink:0,background:'#111',position:'relative',overflow:'hidden'}}>
-            {item.img ? (
-              <img src={item.img} alt={item.name}
-                style={{width:'100%',height:'100%',objectFit:'cover',display:imgLoadingSet.has(i)?'none':'block'}}
-                onLoad={() => setImgLoadingSet(s => { const n=new Set(s); n.delete(i); return n; })}
-                onError={e => { e.target.style.display='none'; }}
-              />
-            ) : (
-              <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#0d0d0d'}}>
-                <span style={{fontSize:28}}>👟</span>
+      {items.map((item, i) => {
+        const vintedUrl = `https://www.vinted.de/catalog?search_text=${encodeURIComponent((item.brand||'')+' '+(item.name||''))}`;
+        return (
+          <div key={i} className="card-hover"
+            style={{background:'#0a0a0a',border:'1px solid #111',borderRadius:14,marginBottom:10,overflow:'hidden'}}>
+            {/* Bild oben – klickbar zum Modal */}
+            <div onClick={() => onSelect(item)} style={{position:'relative',height:160,background:'#111',cursor:'pointer',overflow:'hidden'}}>
+              {item.img ? (
+                <img src={item.img} alt={item.name}
+                  style={{width:'100%',height:'100%',objectFit:'cover'}}
+                  onError={e => { e.target.style.display='none'; }}
+                />
+              ) : (
+                <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:48,opacity:0.15}}>👕</div>
+              )}
+              <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(10,10,10,0.95) 0%,rgba(10,10,10,0.2) 60%,transparent 100%)'}}/>
+              {/* Rang Badge */}
+              <div style={{position:'absolute',top:10,left:10,background:'rgba(0,0,0,0.8)',border:'1px solid #222',borderRadius:6,padding:'3px 8px'}}>
+                <span style={{fontSize:10,color:'#4caf50',fontWeight:800,fontFamily:'Syne, sans-serif'}}>#{i+1}</span>
               </div>
-            )}
-            <div style={{position:'absolute',top:4,left:4,background:'rgba(0,0,0,0.75)',borderRadius:4,padding:'2px 6px'}}>
-              <span style={{fontSize:9,color:'#4caf50',fontWeight:800,fontFamily:'Syne, sans-serif'}}>#{i+1}</span>
+              {/* Trend Pfeil */}
+              <div style={{position:'absolute',top:10,right:10,background:'rgba(0,0,0,0.8)',border:'1px solid #222',borderRadius:6,padding:'3px 8px'}}>
+                <span style={{fontSize:11,color:trendColor(item.trend),fontWeight:700}}>{trendIcon(item.trend)}</span>
+              </div>
+              {/* Info unten im Bild */}
+              <div style={{position:'absolute',bottom:10,left:12,right:12}}>
+                <p style={{fontSize:10,color:'#888',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:2}}>{item.brand}</p>
+                <h3 style={{fontSize:16,fontWeight:800,color:'#fff',fontFamily:'Syne, sans-serif',margin:0}}>{item.name}</h3>
+              </div>
+            </div>
+            {/* Infos + Buttons unten */}
+            <div style={{padding:'12px 14px'}}>
+              <div style={{display:'flex',gap:10,alignItems:'center',marginBottom:8,flexWrap:'wrap'}}>
+                <span style={{fontSize:12,color:'#4caf50',fontWeight:700}}>{item.hype_score}/100</span>
+                <span style={{fontSize:10,color:'#222'}}>·</span>
+                <span style={{fontSize:12,color:'#aaa'}}>~{item.avg_price_eur}€</span>
+                <span style={{fontSize:10,color:'#222'}}>·</span>
+                <span style={{fontSize:11,color:'#666'}}>{item.sell_speed}</span>
+              </div>
+              <p style={{fontSize:12,color:'#555',lineHeight:1.5,marginBottom:12}}>{item.trend_reason}</p>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                <button onClick={() => onSelect(item)}
+                  style={{background:'#4caf50',color:'#000',border:'none',borderRadius:8,padding:'9px',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'Syne, sans-serif'}}>
+                  📊 Details
+                </button>
+                <a href={vintedUrl} target="_blank" rel="noopener noreferrer"
+                  style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'transparent',color:'#fff',border:'1px solid #1a1a1a',borderRadius:8,padding:'9px',fontSize:11,fontWeight:700,textDecoration:'none',fontFamily:'Syne, sans-serif'}}
+                  onClick={e => e.stopPropagation()}>
+                  🛍️ Vinted
+                </a>
+              </div>
             </div>
           </div>
-          <div style={{flex:1,padding:'12px 14px',minWidth:0}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:5,gap:8}}>
-              <div style={{minWidth:0}}>
-                <p style={{fontSize:10,color:'#444',letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:2}}>{item.brand}</p>
-                <h3 style={{fontSize:15,fontWeight:700,color:'#fff',fontFamily:'Syne, sans-serif',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.name}</h3>
-              </div>
-              <span style={{fontSize:11,color:trendColor(item.trend),fontWeight:700,flexShrink:0}}>{trendIcon(item.trend)}</span>
-            </div>
-            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-              <span style={{fontSize:11,color:'#4caf50',fontWeight:700}}>{item.hype_score}/100</span>
-              <span style={{fontSize:10,color:'#222'}}>·</span>
-              <span style={{fontSize:11,color:'#aaa'}}>~{item.avg_price_eur}€</span>
-              <span style={{fontSize:10,color:'#222'}}>·</span>
-              <span style={{fontSize:10,color:'#666'}}>{item.sell_speed}</span>
-            </div>
-            <p style={{fontSize:11,color:'#444',marginTop:5,lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.trend_reason}</p>
-          </div>
-        </div>
-      ))}
+        );
+      })}
       {!loading && items.length === 0 && !error && (
         <div style={{background:'#0a0a0a',border:'1px solid #111',borderRadius:14,padding:'50px 20px',textAlign:'center'}}>
           <p style={{fontSize:13,color:'#444'}}>Keine Trends geladen</p>
